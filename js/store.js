@@ -149,6 +149,8 @@ const DEFAULT_SETTINGS = {
   autoMic: true,          // 曲開始時に自動でマイク接続
   defaultEcho: 25,
   notePreview: true,      // エディタでノート / 鍵盤を操作したときの試聴音
+  musicVolume: 100,       // 楽曲の再生音量 0〜100（録音の音量には影響しない）
+  toneVolume: 70,         // 試聴音（ピープ音・メロディ試聴）の音量 0〜100
 };
 
 export function loadSettings() {

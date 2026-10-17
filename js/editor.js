@@ -11,7 +11,7 @@ import { PianoRoll } from './piano-roll.js';
 import { writeMidi, parseMidi } from './midi.js';
 import { buildKsg, readKsg, ksgFileName } from './ksg.js';
 import { putSong, loadSettings, saveSettings } from './store.js';
-import { tone, setToneEnabled } from './tone.js';
+import { tone, setToneEnabled, setToneVolume } from './tone.js';
 import { splitSyllables } from './lyrics-view.js';
 
 function newProject() {
@@ -615,6 +615,22 @@ export class Editor {
   // ------------------------------------------------------------------
   //  UI バインド
   // ------------------------------------------------------------------
+  /** 音量設定（楽曲 / 試聴音）をエディタのエンジン・スライダーへ反映 */
+  applyVolumeSettings(s = loadSettings()) {
+    const mv = isFinite(Number(s.musicVolume)) ? Number(s.musicVolume) : 100;
+    const tv = isFinite(Number(s.toneVolume)) ? Number(s.toneVolume) : 70;
+    const vol = $('#ed-vol');
+    const toneVol = $('#ed-tone-vol');
+    if (vol) {
+      vol.value = String(mv);
+      const lbl = $('#ed-vol-val');
+      if (lbl) lbl.textContent = String(mv);
+    }
+    if (toneVol) toneVol.value = String(tv);
+    this.engine.setVolume(mv / 100);
+    setToneVolume(tv / 100);
+  }
+
   _bindUI() {
     $('#ed-audio-load').onclick = async () => {
       const f = await pickFile('audio/*,.mp3,.wav,.ogg,.m4a');
@@ -636,6 +652,22 @@ export class Editor {
       setToneEnabled(beep.checked);
       saveSettings({ notePreview: beep.checked });
       if (beep.checked) tone(72);   // ON にしたことを知らせる確認音
+    };
+
+    // 音量（楽曲 = エディタのエンジン / 試聴音 = ピープ音とメロディ試聴）
+    this.applyVolumeSettings();
+    $('#ed-vol').oninput = (e) => {
+      const v = Number(e.target.value);
+      // app.js 経由なら、プレイヤー側のエンジンとスライダーとも数値を揃える
+      if (this.onMusicVolume) { this.onMusicVolume(v); return; }
+      $('#ed-vol-val').textContent = String(v);
+      this.engine.setVolume(v / 100);
+      saveSettings({ musicVolume: v });
+    };
+    $('#ed-tone-vol').oninput = (e) => {
+      const v = Number(e.target.value);
+      setToneVolume(v / 100);
+      saveSettings({ toneVolume: v });
     };
     $('#ed-ksg-open').onclick = async () => {
       const f = await pickFile('.ksg,application/zip');

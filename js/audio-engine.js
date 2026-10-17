@@ -22,6 +22,7 @@ export class AudioEngine {
     this.transpose = 0;
     this.pitchFix = true;
     this.echo = 25;
+    this.volume = 1;           // 楽曲の再生音量 (0〜1)
     this.monitor = false;
 
     this.micStream = null;
@@ -49,9 +50,12 @@ export class AudioEngine {
     // --- ノード作成 ---
     this.musicGain = ctx.createGain();      // 伴奏の音量
     this.musicGain.gain.value = 0.9;
+    this.musicVol = ctx.createGain();       // 楽曲の再生音量（UI の音量スライダー）
+    this.musicVol.gain.value = this.volume;
     this.master = ctx.createGain();
     this.master.gain.value = 1.0;
-    this.musicGain.connect(this.master);
+    this.musicGain.connect(this.musicVol);
+    this.musicVol.connect(this.master);
     this.master.connect(ctx.destination);
 
     // 録音バス（伴奏 + ボーカル）
@@ -272,6 +276,21 @@ export class AudioEngine {
     if (this.sendGain && this.ctx) {
       const g = (this.echo / 100) * 0.85;
       this.sendGain.gain.setTargetAtTime(g, this.ctx.currentTime, 0.05);
+    }
+  }
+
+  /**
+   * 楽曲の再生音量 (0〜1)。スライダー連動でもプチノイズが出ないようラップ時間で補間する。
+   * 伴奏のみを経路に入れるため、録音される音量とマイク監視の音量には影響しない。
+   */
+  setVolume(v) {
+    const val = Number(v);
+    if (!isFinite(val)) return;
+    this.volume = Math.max(0, Math.min(1, val));
+    if (this.musicVol && this.ctx) {
+      const t = this.ctx.currentTime;
+      this.musicVol.gain.cancelScheduledValues(t);
+      this.musicVol.gain.setTargetAtTime(this.volume, t, 0.02);
     }
   }
 

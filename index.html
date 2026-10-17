@@ -120,6 +120,12 @@
         </div>
 
         <div class="panel">
+          <div class="panel-title">楽曲の音量</div>
+          <input id="vol-music" type="range" min="0" max="100" step="1" value="100" title="再生時の音量。録音される音量とマイク監視には影響しません">
+          <div class="range-val"><b id="vol-music-val">100</b> %</div>
+        </div>
+
+        <div class="panel">
           <div class="panel-title">マイク</div>
           <div class="btn-row">
             <button id="btn-mic" class="btn">🎤 マイク開始</button>
@@ -189,6 +195,8 @@
       </label>
       <label>ズーム <input id="ed-zoom" type="range" min="20" max="400" step="10" value="110"></label>
       <label title="クリック時の音と、プレビュー再生中のメロディ試聴音が出ます"><input type="checkbox" id="ed-beep" checked> 試聴音</label>
+      <label title="試聴音（クリック音・再生中のメロディ音）の音量">試聴音量 <input id="ed-tone-vol" type="range" min="0" max="100" step="1" value="70"></label>
+      <label title="楽曲の再生音量（録音される音量とマイク監視には影響しません）">🔊 楽曲 <input id="ed-vol" type="range" min="0" max="100" step="1" value="100"> <b id="ed-vol-val" class="mono">100</b></label>
       <span class="dim" id="ed-hint">ドラッグ=移動 / 右端 or Shift+ドラッグ=長さ / [ ]=長さ± / 空き=新規 / Del=削除</span>
     </div>
 

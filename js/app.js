@@ -18,6 +18,30 @@ const player = new Player(engine);
 const editor = new Editor();
 let settings = loadSettings();
 
+/**
+ * 楽曲音量を UI・プレイヤーのエンジン・エディタ側へ一括で反映する。
+ * プレイ画面とエディタの2つのスライダーが常に同じ値に揃うようにする。
+ */
+function setMusicVolume(v, save = true) {
+  const val = isFinite(Number(v)) ? Math.max(0, Math.min(100, Number(v))) : 100;
+  engine.setVolume(val / 100);
+  editor.engine.setVolume(val / 100);
+  const slider = $('#vol-music');
+  if (slider) slider.value = String(val);
+  const lbl = $('#vol-music-val');
+  if (lbl) lbl.textContent = String(val);
+  const edSlider = $('#ed-vol');
+  if (edSlider) edSlider.value = String(val);
+  const edLbl = $('#ed-vol-val');
+  if (edLbl) edLbl.textContent = String(val);
+  if (save) settings = saveSettings({ musicVolume: val });
+  return val;
+}
+
+function applyMusicVolume(s = settings) { setMusicVolume(s.musicVolume, false); }
+applyMusicVolume();
+editor.onMusicVolume = (v) => setMusicVolume(v);   // エディタ側スライダー → 両方へ反映
+
 editor.onSaved = () => refreshLibrary();
 
 // デバッグ / E2E 用ハンドル
@@ -270,6 +294,7 @@ function applySettingsToUI() {
   $('#set-lyrics-glow').checked = settings.lyricsGlow;
   $('#set-monitor').checked = settings.monitor;
   $('#set-auto-mic').checked = settings.autoMic;
+  applyMusicVolume();
   player.settings = settings;
   player.lyrics.setGlow(settings.lyricsGlow);
   if (player.scorer) player.scorer.setDifficulty(settings.difficulty);
@@ -298,6 +323,9 @@ $('#set-monitor').onchange = (e) => {
   b.classList.toggle('on', e.target.checked);
 };
 $('#set-auto-mic').onchange = (e) => { settings = saveSettings({ autoMic: e.target.checked }); };
+
+// 楽曲の音量（プレイヤー側パネル）
+$('#vol-music').oninput = (e) => setMusicVolume(e.target.value);
 $('#set-clear-scores').onclick = () => {
   if (!confirm('ハイスコアを全て消去しますか？')) return;
   clearHighscores();

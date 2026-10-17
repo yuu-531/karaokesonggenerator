@@ -6,10 +6,18 @@
 //
 let ctx = null;
 let enabled = true;
+let volume = 1;      // 音量スケール (0〜1)
 
 /** 試聴音の ON / OFF */
 export function setToneEnabled(v) { enabled = !!v; }
 export function isToneEnabled() { return enabled; }
+
+/** 試聴音の音量 (0〜1) */
+export function setToneVolume(v) {
+  const n = Number(v);
+  volume = isFinite(n) ? Math.max(0, Math.min(1, n)) : 1;
+}
+export function getToneVolume() { return volume; }
 
 function ac() {
   try {
@@ -32,14 +40,14 @@ function ac() {
  * @param {Object} opt   { dur:秒, gain:0〜1, type:oscillatorType }
  */
 export function tone(midi, opt = {}) {
-  if (!enabled) return;
+  if (!enabled || volume <= 0) return;
   const a = ac();
   if (!a) return;
 
   const m = Math.max(0, Math.min(127, Number(midi) || 60));
   const f = 440 * Math.pow(2, (m - 69) / 12);
   const dur = opt.dur || 0.26;
-  const peak = opt.gain || 0.16;
+  const peak = (opt.gain || 0.16) * volume;
   const t0 = a.currentTime;
 
   // 基音（三角波＝柔らかい）＋ 2倍音（正弦波で芯を足す）
