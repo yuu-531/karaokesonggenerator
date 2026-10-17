@@ -10,7 +10,8 @@ import { Waveform } from './waveform.js';
 import { PianoRoll } from './piano-roll.js';
 import { writeMidi, parseMidi } from './midi.js';
 import { buildKsg, readKsg, ksgFileName } from './ksg.js';
-import { putSong } from './store.js';
+import { putSong, loadSettings, saveSettings } from './store.js';
+import { tone, setToneEnabled } from './tone.js';
 import { splitSyllables } from './lyrics-view.js';
 
 function newProject() {
@@ -32,7 +33,7 @@ export class Editor {
     this.selectedNote = null;
     this.selectedLine = -1;
     this.playing = false;
-    this.view = { scrollT: 0, pps: 110, gutter: 34, pxPerMidi: 13, topMidi: 84, snap: 1 };
+    this.view = { scrollT: 0, pps: 110, gutter: 44, pxPerMidi: 13, topMidi: 84, snap: 1 };
 
     this.waveform = new Waveform($('#ed-waveform'));
     this.roll = new PianoRoll($('#ed-pianoroll'), {
@@ -46,6 +47,7 @@ export class Editor {
       snap: (t) => this.snap(t),
       getTime: () => this.engine.time || 0,
       getBpm: () => Number($('#ed-bpm').value) || 120,
+      onPreview: (midi, opt) => tone(midi, opt),
     });
 
     this._loop = this._loop.bind(this);
@@ -523,7 +525,7 @@ export class Editor {
         <span id="np-name" class="dim">${noteName(n.midi)}</span>
       </div>`;
 
-    $('#np-midi').onchange = (e) => { n.midi = clamp(Math.round(Number(e.target.value) || 0), 0, 127); this.roll.draw(); this.updateNoteProps(); this.project.dirty = true; };
+    $('#np-midi').onchange = (e) => { n.midi = clamp(Math.round(Number(e.target.value) || 0), 0, 127); tone(n.midi); this.roll.draw(); this.updateNoteProps(); this.project.dirty = true; };
     $('#np-start').onchange = (e) => { n.start = Math.max(0, Number(e.target.value) || 0); this.roll.draw(); this.project.dirty = true; };
     $('#np-dur').onchange = (e) => { n.dur = Math.max(0.02, Number(e.target.value) || 0.02); this.roll.draw(); this.project.dirty = true; };
     $('#np-del').onclick = () => this.deleteSelectedNote();
@@ -593,6 +595,15 @@ export class Editor {
     $('#ed-midi-load').onclick = async () => {
       const f = await pickFile('.mid,.midi,audio/midi');
       if (f) await this.importMidi(f);
+    };
+    // 試聴音（ノートや鍵盤をクリックしたときのピープ音）
+    const beep = $('#ed-beep');
+    beep.checked = loadSettings().notePreview !== false;
+    setToneEnabled(beep.checked);
+    beep.onchange = () => {
+      setToneEnabled(beep.checked);
+      saveSettings({ notePreview: beep.checked });
+      if (beep.checked) tone(72);   // ON にしたことを知らせる確認音
     };
     $('#ed-ksg-open').onclick = async () => {
       const f = await pickFile('.ksg,application/zip');

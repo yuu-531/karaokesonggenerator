@@ -148,6 +148,7 @@ const DEFAULT_SETTINGS = {
   monitor: false,         // マイク監視出力
   autoMic: true,          // 曲開始時に自動でマイク接続
   defaultEcho: 25,
+  notePreview: true,      // エディタでノート / 鍵盤を操作したときの試聴音
 };
 
 export function loadSettings() {

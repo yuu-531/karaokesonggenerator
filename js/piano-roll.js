@@ -26,11 +26,16 @@ export class PianoRoll {
     this.mode = null;
     this.drag = null;
     this.follow = false;
+    this.hoverKey = null;
     this._bound = true;
 
     canvas.addEventListener('pointerdown', (e) => this._down(e));
     canvas.addEventListener('pointermove', (e) => { if (!this.mode) this._hover(e); });
-    canvas.addEventListener('pointerleave', () => { if (!this.mode) this.canvas.style.cursor = ''; });
+    canvas.addEventListener('pointerleave', () => {
+      if (this.mode) return;
+      this.canvas.style.cursor = '';
+      if (this.hoverKey != null) { this.hoverKey = null; this.draw(); }
+    });
     window.addEventListener('pointermove', (e) => this._move(e));
     window.addEventListener('pointerup', (e) => this._up(e));
     canvas.addEventListener('contextmenu', (e) => this._ctxmenu(e));
@@ -132,26 +137,60 @@ export class PianoRoll {
       }
     }
 
-    // --- グリッド左の鍵盤ラベル ---
+    // --- 左の鍵盤（ピアノ見た目） ---
+    const gw = v.gutter;
     ctx.fillStyle = '#0a0e1a';
-    ctx.fillRect(0, RULER_H, v.gutter, h - RULER_H);
+    ctx.fillRect(0, RULER_H, gw, h - RULER_H);
+
+    const selMidi = selected ? selected.midi : null;
+    const kh = v.pxPerMidi - 1;
+    const blackW = Math.max(8, gw - 14);   // 黒鍵は右に隙間を残して立体感を出す
+    for (let m = v.topMidi; m >= minMidi - 1; m--) {
+      const y = this.midiToY(m);
+      const pc = ((m % 12) + 12) % 12;
+      const black = BLACK.includes(pc);
+
+      if (black) {
+        ctx.fillStyle = '#161d2e';
+        ctx.fillRect(0, y + 0.5, blackW, kh);
+        ctx.fillStyle = 'rgba(255,255,255,0.10)';      // 上面の反射
+        ctx.fillRect(0, y + kh - 1.5, blackW, 1);
+      } else {
+        ctx.fillStyle = '#e8ecf3';
+        ctx.fillRect(0, y + 0.5, gw - 1, kh);
+        ctx.fillStyle = 'rgba(0,0,0,0.30)';            // 右端の影
+        ctx.fillRect(gw - 4, y + 0.5, 3, kh);
+        ctx.fillStyle = 'rgba(0,0,0,0.12)';            // 鍵盤の仕切り
+        ctx.fillRect(0, y + kh - 0.5, gw - 1, 1);
+      }
+
+      // 選択中ノートの行 / ホバー中の鍵盤を強調
+      if (m === selMidi) {
+        ctx.fillStyle = 'rgba(255,93,143,0.55)';
+        ctx.fillRect(0, y + 0.5, black ? blackW : gw - 1, kh);
+      } else if (this.hoverKey === m) {
+        ctx.fillStyle = 'rgba(96,208,255,0.45)';
+        ctx.fillRect(0, y + 0.5, black ? blackW : gw - 1, kh);
+      }
+    }
+
+    // C のラベル
+    ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (let m = v.topMidi; m >= minMidi - 1; m--) {
+      const pc = ((m % 12) + 12) % 12;
+      if (pc !== 0) continue;
+      const y = this.midiToY(m);
+      ctx.fillStyle = 'rgba(18,24,38,0.9)';
+      ctx.fillText(`C${Math.floor(m / 12) - 1}`, gw - 6, y + v.pxPerMidi / 2);
+    }
+
     ctx.strokeStyle = 'rgba(255,255,255,0.14)';
     ctx.beginPath();
     ctx.moveTo(v.gutter + 0.5, 0);
     ctx.lineTo(v.gutter + 0.5, h);
     ctx.stroke();
-
-    ctx.font = '9px system-ui, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-    for (let m = v.topMidi; m >= minMidi - 1; m--) {
-      const y = this.midiToY(m);
-      const pc = ((m % 12) + 12) % 12;
-      if (pc !== 0 && !BLACK.includes(pc)) continue;
-      ctx.fillStyle = pc === 0 ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)';
-      const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-      ctx.fillText(`${names[pc]}${Math.floor(m / 12) - 1}`, v.gutter - 3, y + v.pxPerMidi / 2);
-    }
 
     // --- ルーラ ---
     ctx.fillStyle = '#080c17';
@@ -180,7 +219,7 @@ export class PianoRoll {
     // --- 再生位置 ---
     const time = this.ctl.getTime ? this.ctl.getTime() : 0;
     const px = this.timeToX(time);
-    if (px >= 0 && px <= w) {
+    if (px >= v.gutter && px <= w) {
       ctx.strokeStyle = '#ff5d8f';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -234,10 +273,26 @@ export class PianoRoll {
     return best;
   }
 
-  /** ホバー中のカーソル表示（ノート本体=移動 / 右端=伸長） */
+  /** 試聴音（editor 側の tone() へ渡る） */
+  _preview(midi, opt) {
+    if (this.ctl.onPreview) this.ctl.onPreview(midi, opt);
+  }
+
+  /** ホバー中のカーソル表示（ノート本体=移動 / 右端=伸長 / 鍵盤=試聴） */
   _hover(e) {
     const { x, y } = this._local(e);
+    const v = this.ctl.getView();
     if (y < RULER_H) { this.canvas.style.cursor = 'ew-resize'; return; }
+
+    // 左の鍵盤
+    if (x < v.gutter) {
+      this.canvas.style.cursor = 'pointer';
+      const m = this.yToMidi(y);
+      if (this.hoverKey !== m) { this.hoverKey = m; this.draw(); }
+      return;
+    }
+    if (this.hoverKey != null) { this.hoverKey = null; this.draw(); }
+
     const hit = this._hitNote(x, y);
     if (!hit) { this.canvas.style.cursor = 'crosshair'; return; }
     const edgeX = this.timeToX(hit.start + hit.dur);
@@ -261,18 +316,27 @@ export class PianoRoll {
 
     const t = clamp(this.ctl.snap(this.xToTime(x)), 0, 1e9);
     const midi = this.yToMidi(y);
+
+    // 左の鍵盤をクリック → その音高を試聴（ノート操作はしない）
+    if (x < v.gutter) {
+      this._preview(midi);
+      e.preventDefault();
+      return;
+    }
+
     const hit = this._hitNote(x, y);
 
     if (hit) {
       const edgeX = this.timeToX(hit.start + hit.dur);
       const onEdge = e.shiftKey || Math.abs(x - edgeX) <= RESIZE_PX || x > edgeX;
       this.ctl.setSelected(hit);
+      this._preview(hit.midi);
       if (onEdge) {
         this.mode = 'resize';
-        this.drag = { note: hit, startX: x, startDur: hit.dur };
+        this.drag = { note: hit, startX: x, startDur: hit.dur, lastMidi: hit.midi };
       } else {
         this.mode = 'move';
-        this.drag = { note: hit, grabT: this.xToTime(x) - hit.start, grabMidi: midi - hit.midi };
+        this.drag = { note: hit, grabT: this.xToTime(x) - hit.start, grabMidi: midi - hit.midi, lastMidi: hit.midi };
       }
       this.ctl.onChange();
       e.preventDefault();
@@ -284,8 +348,9 @@ export class PianoRoll {
     const note = { id: `n${Date.now().toString(36)}${Math.floor(Math.random() * 999)}`, midi, start: t, dur: Math.max(0.05, dur) };
     this.ctl.getNotes().push(note);
     this.ctl.setSelected(note);
+    this._preview(midi);
     this.mode = 'move';
-    this.drag = { note, grabT: this.xToTime(x) - note.start, grabMidi: 0, created: true };
+    this.drag = { note, grabT: this.xToTime(x) - note.start, grabMidi: 0, created: true, lastMidi: midi };
     this.ctl.onChange();
     e.preventDefault();
   }
@@ -306,6 +371,10 @@ export class PianoRoll {
       const midi = this.yToMidi(y) - this.drag.grabMidi;
       n.start = Math.max(0, this.ctl.snap(t));
       n.midi = clamp(midi, 0, 127);
+      if (this.drag.lastMidi !== n.midi) {
+        this.drag.lastMidi = n.midi;
+        this._preview(n.midi, { dur: 0.18, gain: 0.12 });   // 音高が変わった瞬間に鳴らす
+      }
       this.ctl.onChange();
     } else if (this.mode === 'resize') {
       const endT = this.xToTime(x);
