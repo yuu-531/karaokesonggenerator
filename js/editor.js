@@ -318,6 +318,7 @@ export class Editor {
     if (this.engine.playing) {
       this.engine.pause();
       this.playing = false;
+      this._melody = null;
       cancelAnimationFrame(this._raf);
       $('#ed-play').textContent = '▶';
       this.roll.draw();
@@ -326,6 +327,7 @@ export class Editor {
     const from = this.engine.pausedAt >= this.engine.duration ? 0 : this.engine.pausedAt;
     await this.engine.play(from);
     this.playing = true;
+    this._startMelody(from);
     $('#ed-play').textContent = '⏸';
     this.roll.follow = true;
     cancelAnimationFrame(this._raf);
@@ -335,6 +337,7 @@ export class Editor {
   stop() {
     this.engine.stop();
     this.playing = false;
+    this._melody = null;
     cancelAnimationFrame(this._raf);
     $('#ed-play').textContent = '▶';
     this.roll.draw();
@@ -345,15 +348,44 @@ export class Editor {
     const target = clamp(t, 0, this.engine.duration || 1e9);
     if (this.engine.playing) this.engine.seek(target);
     else this.engine.pausedAt = target;
+    if (this._melody) this._melody.idx = this._melodyIndexAt(target);
     this._updateTimeUI(target);
     this._updateHead(target);
     this.roll.draw();
+  }
+
+  // --- 再生中のメロディ試聴音 -----------------------------------------
+  /** 再生開始位置以降のノートを開始時刻順に並べたスナップショットを作る */
+  _startMelody(from) {
+    const list = this.project.notes.slice().sort((a, b) => a.start - b.start);
+    this._melody = { list, idx: 0, prev: from };
+    this._melody.idx = this._melodyIndexAt(from);
+  }
+
+  _melodyIndexAt(t) {
+    const list = this._melody.list;
+    let i = 0;
+    while (i < list.length && list[i].start < t) i++;
+    return i;
+  }
+
+  /** 再生位置を跨いだノートを鳴らす（試聴音が ON のときだけ発音） */
+  _melodyTick(t) {
+    const m = this._melody;
+    if (!m) return;
+    if (!(t >= m.prev)) { m.idx = this._melodyIndexAt(t); }   // 巻き戻り時は位置を張り直す
+    m.prev = t;
+    while (m.idx < m.list.length && m.list[m.idx].start <= t) {
+      const n = m.list[m.idx++];
+      tone(n.midi, { dur: clamp(n.dur, 0.12, 4), gain: 0.13 });
+    }
   }
 
   _loop() {
     if (!this.playing) return;
     this._raf = requestAnimationFrame(this._loop);
     const t = this.engine.time;
+    this._melodyTick(t);
     this._updateTimeUI(t);
     this._updateHead(t);
     if (this.roll.autoFollow(t)) this.waveform.draw(this.view);
