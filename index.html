@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Karaoke Song Generator — ブラウザ完結型カラオケ</title>
+<meta name="description" content=".ksg 形式のカラオケ曲を再生・採点・作成できる、ブラウザ完結型カラオケアプリ。GitHub Pages で動作。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header id="topbar">
+  <div class="brand"><span class="logo">🎤</span> Karaoke Song Generator</div>
+  <nav id="nav">
+    <button class="nav-btn active" data-route="library">ライブラリ</button>
+    <button class="nav-btn" data-route="play">プレイ</button>
+    <button class="nav-btn" data-route="editor">エディタ</button>
+    <button class="nav-btn" data-route="settings">設定</button>
+  </nav>
+  <div id="now-playing" class="now-playing hidden"></div>
+</header>
+
+<main>
+
+  <!-- ======================= LIBRARY ======================= -->
+  <section id="view-library" class="view">
+    <div class="view-head">
+      <h2>ライブラリ</h2>
+      <div class="btn-row">
+        <button id="btn-import-ksg" class="btn primary">＋ .ksg を読み込む</button>
+        <button id="btn-new-project" class="btn">新規プロジェクト（作る）</button>
+        <button id="btn-load-demo" class="btn ghost">デモ曲を生成</button>
+      </div>
+    </div>
+
+    <div id="drop-zone" class="drop-zone">
+      <div class="dz-icon">📦</div>
+      <div class="dz-text"><b>.ksg ファイル</b> をここにドラッグ＆ドロップ</div>
+      <div class="dz-sub">（.ksg = info.json / audio / bg / melody.mid / lyrics.json を格納した ZIP）</div>
+    </div>
+
+    <div id="song-grid" class="song-grid"></div>
+    <div id="empty-state" class="empty hidden">
+      <div class="empty-icon">🎵</div>
+      <p>まだ曲がありません。</p>
+      <p class="dim">「＋ .ksg を読み込む」で読み込むか、「デモ曲を生成」でお試しください。</p>
+    </div>
+  </section>
+
+  <!-- ======================= PLAY ======================= -->
+  <section id="view-play" class="view hidden">
+    <div class="play-layout">
+      <div class="stage-col">
+        <div id="stage" class="stage">
+          <video id="bg-video" class="hidden" playsinline muted loop disablepictureinpicture></video>
+          <canvas id="bg-fallback" class="bg-fallback"></canvas>
+          <div class="stage-shade"></div>
+
+          <div class="hud">
+            <div class="hud-item hud-score"><span>SCORE</span><b id="hud-score">0</b></div>
+            <div class="hud-item hud-acc"><span>音程</span><b id="hud-acc">--%</b></div>
+            <div class="hud-item hud-combo"><b id="hud-combo">0</b><span>COMBO</span></div>
+          </div>
+
+          <div id="judgment" class="judgment"></div>
+
+          <div id="lyrics" class="lyrics" aria-live="off"></div>
+
+          <div id="stage-placeholder" class="stage-placeholder">
+            <div class="sp-card">
+              <div class="sp-title" id="sp-title">曲が選択されていません</div>
+              <div class="sp-artist" id="sp-artist"></div>
+              <button id="btn-start" class="btn primary big" disabled>▶ スタート</button>
+              <div class="sp-hint" id="sp-hint">ライブラリから曲を選んでください</div>
+            </div>
+          </div>
+        </div>
+
+        <canvas id="pitch-lane" class="pitch-lane" height="168"></canvas>
+
+        <div class="transport">
+          <button id="btn-play" class="btn round" title="再生 / 一時停止 (Space)">▶</button>
+          <button id="btn-stop" class="btn" title="停止して先頭へ">■</button>
+          <span id="time-cur" class="time mono">0:00</span>
+          <div id="progress" class="progress" title="クリックでシーク"><div id="progress-fill"></div></div>
+          <span id="time-total" class="time mono">0:00</span>
+        </div>
+      </div>
+
+      <aside class="side-col">
+        <div class="panel">
+          <div class="panel-title">曲情報</div>
+          <div class="p-song-title" id="p-title">—</div>
+          <div class="p-song-artist" id="p-artist"></div>
+          <div class="p-best" id="p-best">ベストスコア: —</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">キー変更 <span class="dim">(トランスポーズ)</span></div>
+          <div class="stepper">
+            <button id="key-minus" class="btn square">−</button>
+            <div class="stepper-val"><b id="key-val">0</b> 半音</div>
+            <button id="key-plus" class="btn square">＋</button>
+            <button id="key-reset" class="btn small">reset</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">再生スピード</div>
+          <input id="speed" type="range" min="0.5" max="1.5" step="0.05" value="1">
+          <div class="range-val"><b id="speed-val">1.00</b> ×</div>
+          <label class="chk"><input type="checkbox" id="chk-pitch-fix" checked> 速度変更時もキーを保つ（ピッチ補正）</label>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">エコー / 残響（ボーカル）</div>
+          <input id="echo" type="range" min="0" max="100" step="1" value="25">
+          <div class="range-val"><b id="echo-val">25</b> %</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">マイク</div>
+          <div class="btn-row">
+            <button id="btn-mic" class="btn">🎤 マイク開始</button>
+            <button id="btn-monitor" class="btn small" title="ヘッドホン推奨">監視OFF</button>
+          </div>
+          <div class="mic-meter"><div id="mic-level"></div></div>
+          <div id="mic-status" class="dim small">未接続</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">録音</div>
+          <div class="btn-row">
+            <button id="btn-rec" class="btn">⏺ 録音開始</button>
+            <button id="btn-rec-stop" class="btn small" disabled>■ 停止</button>
+          </div>
+          <div id="rec-list" class="rec-list"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">リアルタイム判定</div>
+          <table class="stat-table">
+            <tr><td>Perfect</td><td id="st-perfect">0</td></tr>
+            <tr><td>Good</td><td id="st-good">0</td></tr>
+            <tr><td>Miss</td><td id="st-miss">0</td></tr>
+            <tr><td>最大コンボ</td><td id="st-combo">0</td></tr>
+            <tr><td>スコア</td><td id="st-score">0</td></tr>
+          </table>
+          <button id="btn-end" class="btn wide">この曲を終了してリザルトへ</button>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ======================= EDITOR ======================= -->
+  <section id="view-editor" class="view hidden">
+    <div class="ed-toolbar">
+      <div class="fields">
+        <label>曲名 <input id="ed-title" type="text" placeholder="タイトル"></label>
+        <label>アーティスト <input id="ed-artist" type="text" placeholder="アーティスト"></label>
+        <label>BPM <input id="ed-bpm" type="number" min="30" max="300" step="0.1" value="120"></label>
+        <label>オフセット <input id="ed-offset" type="number" min="-5" max="5" step="0.01" value="0"></label>
+      </div>
+      <div class="btn-row">
+        <button id="ed-audio-load" class="btn">♫ 音声を読み込む</button>
+        <button id="ed-video-load" class="btn">▶ 映像を読み込む</button>
+        <button id="ed-midi-load" class="btn" title="メロディ・歌詞イベントを取り込む">🎚 MIDI を読み込む</button>
+        <button id="ed-ksg-open" class="btn">📦 .ksgを開く</button>
+        <button id="ed-save-lib" class="btn">💾 ライブラリに保存</button>
+        <button id="ed-export" class="btn primary">⬇ .ksg 書き出し</button>
+      </div>
+    </div>
+
+    <div class="ed-transport">
+      <button id="ed-play" class="btn round small">▶</button>
+      <button id="ed-stop" class="btn small">■</button>
+      <span id="ed-time" class="time mono">0:00.0</span>
+      <span class="sep">|</span>
+      <label>グリッド
+        <select id="ed-snap">
+          <option value="4">1/1</option>
+          <option value="2">1/2</option>
+          <option value="1" selected>1/4</option>
+          <option value="0.5">1/8</option>
+          <option value="0.25">1/16</option>
+          <option value="0">切なし</option>
+        </select>
+      </label>
+      <label>ズーム <input id="ed-zoom" type="range" min="20" max="400" step="10" value="110"></label>
+      <span class="dim" id="ed-hint">ドラッグ=移動 / 右端 or Shift+ドラッグ=長さ / [ ]=長さ± / 空き=新規 / Del=削除</span>
+    </div>
+
+    <div class="wave-wrap">
+      <canvas id="ed-waveform" class="ed-waveform" height="92"></canvas>
+      <div id="ed-wave-head" class="wave-head hidden"></div>
+    </div>
+
+    <div class="ed-main">
+      <div class="pianoroll-wrap">
+        <canvas id="ed-pianoroll"></canvas>
+      </div>
+      <aside class="lyrics-panel">
+        <div class="lp-head">
+          <span>歌詞とタイミング</span>
+          <button id="lp-add-line" class="btn small">＋ 行</button>
+        </div>
+        <div id="lp-lines" class="lp-lines"></div>
+        <div class="lp-actions">
+          <button id="lp-autosplit" class="btn small">文字で音節分割</button>
+          <button id="lp-align" class="btn small">選択ノートに整列</button>
+        </div>
+        <div id="note-props" class="note-props dim">ノート未選択</div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ======================= SETTINGS ======================= -->
+  <section id="view-settings" class="view hidden">
+    <div class="view-head"><h2>設定</h2></div>
+    <div class="settings-grid">
+      <div class="panel">
+        <div class="panel-title">採点</div>
+        <label class="lbl">判定の厳しさ
+          <select id="set-difficulty">
+            <option value="easy">かんたん（±1.0 半音で Perfect）</option>
+            <option value="normal" selected>ふつう（±0.55 半音で Perfect）</option>
+            <option value="hard">むずかしい（±0.3 半音で Perfect）</option>
+          </select>
+        </label>
+        <label class="chk"><input type="checkbox" id="set-lyrics-glow" checked> 歌詞ワイプのグローを表示</label>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">マイク</div>
+        <label class="chk"><input type="checkbox" id="set-monitor"> マイク音を監視出力（ヘッドホン推奨）</label>
+        <label class="chk"><input type="checkbox" id="set-auto-mic" checked> 曲開始時にマイクを自動接続</label>
+        <p class="dim small">※ 誤差補正のため AEC / ノイズ抑制 / AGC は無効で取得します。</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">データ</div>
+        <p class="small">保存済み曲: <b id="set-song-count">0</b> 曲 / スコア: <b id="set-score-count">0</b> 件</p>
+        <div class="btn-row">
+          <button id="set-clear-scores" class="btn small">スコアを消去</button>
+          <button id="set-clear-all" class="btn small danger">全データを消去</button>
+        </div>
+        <p class="dim small">曲データは IndexedDB、設定とハイスコアは localStorage に保存されます。</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">キーボード</div>
+        <ul class="kbd-list">
+          <li><kbd>Space</kbd> 再生 / 一時停止</li>
+          <li><kbd>←</kbd><kbd>→</kbd> ±5秒 シーク</li>
+          <li><kbd>↑</kbd><kbd>↓</kbd> キー ±1半音</li>
+          <li><kbd>R</kbd> 録音開始 / 停止</li>
+          <li><kbd>Esc</kbd> モーダルを閉じる</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ドラッグオーバーレイ -->
+<div id="drop-overlay" class="drop-overlay hidden"><div>📦 .ksg をここにドロップ<span class="dim">（エディタ中は .mid も読み込めます）</span></div></div>
+
+<!-- リザルトモーダル -->
+<div id="result-modal" class="modal hidden">
+  <div class="modal-card result-card">
+    <div class="result-head">
+      <div class="result-song" id="rs-song">—</div>
+      <button class="modal-close" data-close="result-modal">✕</button>
+    </div>
+    <div class="result-score-wrap">
+      <div class="result-score" id="rs-score">0</div>
+      <div class="result-label">TOTAL SCORE</div>
+    </div>
+    <div class="result-grid">
+      <div class="rs-box"><b id="rs-perfect">0</b><span>PERFECT</span></div>
+      <div class="rs-box"><b id="rs-good">0</b><span>GOOD</span></div>
+      <div class="rs-box"><b id="rs-miss">0</b><span>MISS</span></div>
+      <div class="rs-box"><b id="rs-combo">0</b><span>MAX COMBO</span></div>
+      <div class="rs-box"><b id="rs-acc">0%</b><span>音程一致率</span></div>
+      <div class="rs-box"><b id="rs-best">—</b><span>BEST</span></div>
+    </div>
+    <div class="result-charts">
+      <div class="chart-box">
+        <div class="chart-title">セクション別スコア</div>
+        <canvas id="rs-chart-lines" height="150"></canvas>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title">音程誤差の推移（中心線がノート）</div>
+        <canvas id="rs-chart-pitch" height="150"></canvas>
+      </div>
+    </div>
+    <div class="result-note" id="rs-note"></div>
+    <div class="btn-row center">
+      <button id="rs-retry" class="btn primary">もう一度</button>
+      <button id="rs-back" class="btn">ライブラリへ</button>
+      <button id="rs-dl" class="btn hidden">録音をダウンロード</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<input type="file" id="file-ksg" accept=".ksg,application/zip" multiple hidden>
+<input type="file" id="file-audio" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac" hidden>
+<input type="file" id="file-video" accept="video/*,.mp4,.webm,.mov,.m4v" hidden>
+
+<script src="js/vendor/jszip.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
